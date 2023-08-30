@@ -1,0 +1,10 @@
+checkHierarchy v0.0.1: <program description>
+  by Donovan Parks (donovan.parks@gmail.com)
+
+Identified 19 samples.
+Identified 2 hierarchical columns.
+
+The following entries have two (and potentially more) parents:
+1883	description	pncC; nicotinamide-nucleotide amidase [EC:3.5.1.42]	K03742,K03743
+2286	description	trpB; tryptophan synthase beta chain [EC:4.2.1.20]	K01696,K06001
+3136	description	queF; 7-cyano-7-deazaguanine reductase [EC:1.7.1.13]	K06879,K09457

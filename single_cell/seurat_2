@@ -1,0 +1,450 @@
+# don't do batch correction!
+# 230803
+
+
+#load libraries---------------------------------------------------------------------------------------
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(data.table)
+library(tidyr)
+
+
+#QC by mitochondria-----------------------------------------------------------------------------------
+#data - already cutoff by 200 < nFeature_RNA < 7500
+dt <- readRDS('/data/project/RCC_HWS/SS/sc/sc_analysis/rcc.all.df.rds') 
+dt <- SetIdent(dt, value = dt$donor_id)
+dt$pANN_0.25_0.005_11547 <- NULL
+dt$DF.classifications_0.25_0.005_11547 <- NULL
+dt$DF.classifications_0.25_0.005_10509 <- NULL
+
+dt[["percent.mt"]] <- PercentageFeatureSet(dt, pattern = "^MT-")
+dt <- PercentageFeatureSet(dt, "^RP[SL]", col.name = "percent.rb")
+dt <- PercentageFeatureSet(dt, "^HB[^(P)]", col.name = "percent.hb")
+dt <- PercentageFeatureSet(dt, "PECAM1|PF4", col.name = "percent.plat")
+
+png('/data/project/RCC_HWS/SS/sc/seurat/qc.png',width=500,height=800)
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rb", "percent.hb", "percent.plat")
+VlnPlot(dt, group.by = "orig.ident", features = feats, pt.size = 0.1, ncol = 3) +
+    NoLegend()
+dev.off()
+
+png('/data/project/RCC_HWS/SS/sc/seurat/qc2.png',width=1000)
+FeatureScatter(dt, "nCount_RNA", "nFeature_RNA", group.by = "ident", pt.size = 0.5)
+dev.off()
+
+dt <- subset(dt, subset = percent.mt < 25) # 38491 cells -> 37902
+dt <- subset(dt, subset = percent.hb < 3) # 38491 cells -> 37529
+
+
+png('/data/project/RCC_HWS/SS/sc/seurat/qc_2.png',width=500,height=800)
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rb", "percent.hb", "percent.plat")
+VlnPlot(dt, group.by = "orig.ident", features = feats, pt.size = 0.1, ncol = 3) +
+    NoLegend()
+dev.off()
+
+png('/data/project/RCC_HWS/SS/sc/seurat/qc2_2.png',width=1000)
+FeatureScatter(dt, "nCount_RNA", "nFeature_RNA", group.by = "ident", pt.size = 0.5)
+dev.off()
+
+backup <- dt
+saveRDS(backup, '/data/project/RCC_HWS/SS/sc/seurat/qc.rds')
+
+
+#processing for inital UMAP----------------------------------------------------------------------------
+dt <- NormalizeData(dt, normalization.method = "LogNormalize", scale.factor = 10000)
+dt <- FindVariableFeatures(dt, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(dt), 10)
+plot1 <- VariableFeaturePlot(dt)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+png('/data/project/RCC_HWS/SS/sc/seurat/variable_features.png',width=1000)
+plot1 + plot2
+dev.off()
+all.genes <- rownames(dt)
+dt <- ScaleData(dt, features = all.genes)
+dt <- RunPCA(dt, features = VariableFeatures(object = dt))
+dt <- RunUMAP(dt, dims = 1:30)
+dt <- FindNeighbors(dt, dims = 1:30)
+dt <- FindClusters(dt, resolution = 0.5)
+
+png('/data/project/RCC_HWS/SS/sc/seurat/pro1.umap.png')
+DimPlot(dt, reduction = "umap")
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro1.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro1.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+
+dt <- SetIdent(dt, value = dt@meta.data$donor_id)
+dbl <- WhichCells(dt, idents=c('doublet'))
+amb <- WhichCells(dt, idents=c('unassigned'))
+png('/data/project/RCC_HWS/SS/sc/seurat/vireo.doublets.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id', cells.highlight=list(dbl,amb), cols.highlight=c('red','blue'), sizes.highlight=0.05, cols='grey')
+dev.off()
+
+backup1 <- dt
+saveRDS(backup1,'/data/project/RCC_HWS/SS/sc/seurat/pro1.rds')
+
+
+#remove doublets & unassigned from Vireo---------------------------------------------------------------
+dt <- SetIdent(dt, value = dt@meta.data$donor_id)
+sng <- subset(dt, idents = c('doublet','unassigned'), invert=TRUE) #37529 cells -> 24551 cells
+
+sng <- SetIdent(sng, value = sng$seurat_clusters)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro2.umap.png')
+DimPlot(sng, reduction = "umap")
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro2.umap.id.png')
+DimPlot(sng, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro2.umap.stat.png')
+DimPlot(sng, reduction = "umap", group.by='Status')
+dev.off()
+
+backup2 <- sng
+saveRDS(backup2, '/data/project/RCC_HWS/SS/sc/seurat/pro2.rds')
+
+dt <- sng
+
+
+#pre-processing for doubletfinder----------------------------------------------------------------------
+dt <- NormalizeData(dt)
+dt <- FindVariableFeatures(dt, selection.method = "vst", nfeatures = 2000)
+all.genes<-row.names(dt)
+dt <- ScaleData(dt, features=all.genes)
+dt <- RunPCA(dt)
+dt <- RunUMAP(dt, dims = 1:10)
+dt <- FindNeighbors(dt, reduction = 'pca', dims = 1:10)
+dt <- FindClusters(dt, resolution = 0.5)
+
+dt <- SetIdent(dt, value = dt@meta.data$donor_id)
+
+png('/data/project/RCC_HWS/SS/sc/seurat/pro3.umap.png')
+DimPlot(dt, reduction = "umap")
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro3.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro3.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+
+backup3 <- dt
+saveRDS(backup3, '/data/project/RCC_HWS/SS/sc/seurat/pro3.rds')
+
+
+#doubletfinder (switch environments)-----------------------------------------------------------------------------------------
+#load libraries
+library(Seurat)
+library(Matrix)
+library(fields)
+library(KernSmooth)
+library(ROCR)
+library(parallel)
+library(remotes)
+library(DoubletFinder)
+library(dplyr)
+library(patchwork)
+
+dt <- readRDS('/data/project/RCC_HWS/rlo/data/pro3.rds')
+
+## pK Identification (no ground-truth)
+sweep.res.dt <- paramSweep_v3(dt, PCs = 1:10, sct = FALSE)
+sweep.stats_dt <- summarizeSweep(sweep.res.dt, GT = FALSE)
+bcmvn_dt <- find.pK(sweep.stats_dt)
+pk <- bcmvn_dt
+pk2 <- pk[order(pk$BCmetric),] #pk with highest BCmetrix(y) value: 0.005
+## Homotypic Doublet Proportion Estimate
+homotypic.prop <- modelHomotypic(dt@meta.data$seurat_clusters)
+nExp_poi <- round(0.19*nrow(dt@meta.data))  ## Assuming 19% doublet formation rate
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+## Run DoubletFinder with varying classification stringencies
+dt <- doubletFinder_v3(dt, PCs = 1:10, pN = 0.25, pK = 0.005, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+dt <- doubletFinder_v3(dt, PCs = 1:10, pN = 0.25, pK = 0.005, nExp = nExp_poi.adj, reuse.pANN = "pANN_0.25_0.005_4665", sct = FALSE)
+
+backup4 <- dt
+saveRDS(backup4, '/data/project/RCC_HWS/rlo/data/pro4.rds')
+
+
+#remove doublets from doubletfinder (switch back environments)--------------------------------------------------------------------
+dt <- readRDS('/data/project/RCC_HWS/rlo/data/pro4.rds')
+
+#see location of doublets
+dt <- SetIdent(dt, value = dt@meta.data$DF.classifications_0.25_0.005_4175)
+dbl <- WhichCells(dt, idents=c('Doublet'))
+png('/data/project/RCC_HWS/rlo/plot/pro4.png')
+DimPlot(dt, reduction = "umap", group.by='DF.classifications_0.25_0.005_4175', cells.highlight=list(dbl), cols.highlight=c('red'), sizes.highlight=0.05, cols='grey')
+dev.off()
+
+#subset singlets
+dt <- SetIdent(dt, value = dt@meta.data$DF.classifications_0.25_0.005_4175)
+sng <- subset(dt, idents = c('Doublet'), invert=TRUE) #20376 cells
+
+sng <- SetIdent(sng, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/rlo/plot/pro5.umap.png')
+DimPlot(sng, reduction = "umap")
+dev.off()
+png('/data/project/RCC_HWS/rlo/plot/pro5.umap.id.png')
+DimPlot(sng, reduction = "umap", group.by='donor_id')
+dev.off()
+
+backup5 <- sng
+saveRDS(backup5, '/data/project/RCC_HWS/rlo/data/pro5.rds')
+
+dt <- backup5
+
+#re-processing-----------------------------------------------------------------------------------------
+dt <- NormalizeData(dt, normalization.method = "LogNormalize", scale.factor = 10000)
+dt <- FindVariableFeatures(dt, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(dt), 10)
+plot1 <- VariableFeaturePlot(dt)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+png('/data/project/RCC_HWS/rlo/plot/variable_features2.png',width=1000)
+plot1 + plot2
+dev.off()
+all.genes <- rownames(dt)
+dt <- ScaleData(dt, features = all.genes)
+dt <- RunPCA(dt, features = VariableFeatures(object = dt))
+dt <- RunUMAP(dt, dims = 1:30)
+dt <- FindNeighbors(dt, dims = 1:30)
+dt <- FindClusters(dt, resolution = 0.5)
+
+dt <- SetIdent(dt, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/rlo/plot/pro6.umap.png')
+DimPlot(dt, reduction = "umap", label=TRUE)
+dev.off()
+png('/data/project/RCC_HWS/rlo/plot/pro6.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/rlo/plot/pro6.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+
+backup6 <- dt
+saveRDS(backup6,'/data/project/RCC_HWS/rlo/data/pro6.rds')
+
+
+#SeuratObject cleanup---------------------------------------------------------------------------------------------------------------
+dt <- readRDS('/data/project/RCC_HWS/rlo/data/pro6.rds')
+
+#cleanup
+dt$percent.mt <- NULL
+dt$percent.rb <- NULL
+dt$percent.hb <- NULL
+dt$percent.plat <- NULL
+dt$pANN_0.25_0.005_4665 <- NULL
+dt$DF.classifications_0.25_0.005_4665 <- NULL
+dt$DF.classifications_0.25_0.005_4175 <- NULL
+org <- dt
+
+saveRDS(dt, '/data/project/RCC_HWS/rlo/data/pro7.rds')
+
+
+#celltyping---------------------------------------------------------------------------------------------------------------
+# 1. celltypist
+args = commandArgs(trailingOnly=TRUE)
+Seurat_dir <- args[1]
+outdir <- args[2]
+print(Seurat_dir)
+Seurat <- readRDS(file="/data/project/RCC_HWS/SS/sc/seurat/pro7.rds")
+rows <- nrow(Seurat)
+cols <- ncol(Seurat)
+cuts <- round(seq(1,rows, by = rows/7))
+
+setwd('/data/project/RCC_HWS/SS/sc/seurat')
+print('loading seurats')
+Seu1 <- Seurat[cuts[1]:(cuts[2]-1),]
+Seu2 <- Seurat[cuts[2]:(cuts[3]-1),]
+Seu3 <- Seurat[cuts[3]:(cuts[4]-1),]
+Seu4 <- Seurat[cuts[4]:(cuts[5]-1),]
+Seu5 <- Seurat[cuts[5]:(cuts[6]-1),]
+Seu6 <- Seurat[cuts[6]:(cuts[7]-1),]
+Seu7 <- Seurat[cuts[7]:rows,]
+
+#1
+print("Step 1/7")
+count_norm1 <- as.data.frame(Seu1[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu1[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv', row.names=TRUE, col.names=TRUE, quote=FALSE, nThread=10)
+#2
+print("Step 2/7")
+count_norm1 <- as.data.frame(Seu2[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu2[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#3
+print("Step 3/7")
+count_norm1 <- as.data.frame(Seu3[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu3[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#4
+print("Step 4/7")
+count_norm1 <- as.data.frame(Seu4[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu4[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#5
+print("Step 5/7")
+count_norm1 <- as.data.frame(Seu5[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu5[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#6
+print("Step 6/7")
+count_norm1 <- as.data.frame(Seu6[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu6[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#7
+print("Step 7/7")
+count_norm1 <- as.data.frame(Seu7[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu7[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+
+# celltypist (command line)---------------------------------------------------------------
+# celltypist --update-models
+celltypist --indata /data/project/RCC_HWS/SS/sc/seurat/seurat.csv --model Immune_All_Low.pkl --outdir /data/project/RCC_HWS/SS/sc/celltypist/imm_low --transpose-input
+# celltypist --indata /data/project/RCC_HWS/SS/sc/seurat/seurat.csv --model Immune_All_High.pkl --outdir /data/project/RCC_HWS/SS/sc/celltypist/imm_high --transpose-input
+
+# add metadata--------------------------------------------------------------
+labels <- read.csv("/data/project/RCC_HWS/SS/sc/celltypist/imm_low/predicted_labels.csv")
+row.names(labels) <- labels$X #set rowname of new to cell barcode
+dt <- AddMetaData(dt, metadata = labels)
+dt$X <- NULL #remove extra barcode column
+backup8 <- dt
+saveRDS(dt, '/data/project/RCC_HWS/SS/sc/seurat/pro8.rds')
+
+png('/data/project/RCC_HWS/SS/sc/seurat/pro8.labels.png',width=2200,height=1700)
+DimPlot(dt, reduction = "umap", group.by='predicted_labels', label=TRUE)
+dev.off()
+
+count <- table(dt$seurat_clusters,dt$predicted_labels)
+write.csv(count,'/data/project/RCC_HWS/SS/sc/seurat/predicted_by_clusters.csv')
+clusters <- rownames(count)
+id <- c(colnames(count)[apply(count,1,which.max)])
+best_id <- data.frame(clusters, id)
+write.csv(best_id,'/data/project/RCC_HWS/SS/sc/seurat/best_id_by_cluster.csv')
+
+lbd <- dt
+names(id) <- levels(lbd)
+dt <- RenameIdents(lbd, id)
+
+png('/data/project/RCC_HWS/SS/sc/seurat/pro8.cluster.labeled.png',width=700,height=600)
+DimPlot(dt, reduction = "umap", group.by='ident', label=TRUE)
+dev.off()
+
+#--------------
+#return rownames with values greater than 10
+# type_count <- data.frame(unclass(table(dt$predicted_labels)))
+count <- table(dt$seurat_clusters,dt$predicted_labels)
+clusters <- rownames(count)
+df <- NULL
+df <- as.data.frame(clusters,)
+for(i in 1:ncol(count)){
+    x <- 0
+    for (j in 1:nrow(count)){
+        if (count[j,i] > 10){
+            x <- 1
+        }
+    }
+    if (x>0){
+        new <- as.data.frame(count[,i], drop=FALSE)
+        colnames(new) <- colnames(count)[i]
+        df <- cbind(df,new)
+    }
+}
+
+df_per <- df[2:ncol(df)]/rowSums(df[2:ncol(df)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Cluster")
+df_tib <- gather(df_tib,key='Cell.Type',value='Percentage',2:ncol(df_tib))
+df_tib <- arrange(df_tib, Cluster)
+df_tib$Cluster <- as.numeric(as.character(df_tib$Cluster))
+df_tib <- df_tib[order(df_tib$Cluster),]
+
+#plot--------------------------------------------
+# level_order <- c('0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18')
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro8.celltype.by.cluster.png',width=1200,res=100)
+ggplot(df_tib, aes(x=factor(Cluster),y=Percentage, fill=Cell.Type)) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    #xlab('Cluster') +
+    coord_flip()
+dev.off()
+
+#cell type by patient
+count <- table(dt$donor_id,dt$predicted_labels)
+id <- rownames(count)
+df <- NULL
+df <- as.data.frame(id,)
+for(i in 1:ncol(count)){
+    x <- 0
+    for (j in 1:nrow(count)){
+        if (count[j,i] > 10){
+            x <- 1
+        }
+    }
+    if (x>0){
+        new <- as.data.frame(count[,i], drop=FALSE)
+        colnames(new) <- colnames(count)[i]
+        df <- cbind(df,new)
+    }
+}
+df_save <- df
+df_per <- df[2:ncol(df)]/rowSums(df[2:ncol(df)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Donor.Id")
+df_tib <- gather(df_tib,key='Cell.Type',value='Percentage',2:ncol(df_tib))
+df_tib <- arrange(df_tib, Donor.Id)
+# df_tib$Donor.Id <- as.numeric(as.character(df_tib$Donor.Id))
+# df_tib <- df_tib[order(df_tib$Donor.Id),]
+non_agg <- c('KJT','KSH','CSB','MYS')
+agg <- c('YJH','LHJ','KYE','CSK')
+patient_order <- c(agg,non_agg)
+
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro8.celltype.by.donor.png',width=1200,res=100)
+ggplot(df_tib, aes(x=factor(Donor.Id, levels=patient_order),y=Percentage, fill=Cell.Type)) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    coord_flip()
+dev.off()
+
+#donor by cell type -- cell type w/ count < 20 for YJH removed
+count <- as.data.frame.matrix(table(dt$predicted_labels, dt$donor_id))
+count <- t(count) #transpose
+id <- rownames(count)
+df <- NULL
+df <- as.data.frame(id,)
+
+for(i in nrow(count):nrow(count)){
+    for (j in 1:ncol(count)){
+        if (count[8,j] > 20){
+            new <- as.data.frame(count[,j], drop=FALSE)
+            colnames(new) <- colnames(count)[j]
+            df <- cbind(df,new)
+        }
+    }
+}
+df_save <- df
+df$id <- NULL
+df_t <- as.data.frame.matrix(t(df))   
+df_per <- df_t[1:ncol(df_t)]/rowSums(df_t[1:ncol(df_t)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Cell.Type")
+df_tib <- gather(df_tib,key='Donor.Id',value='Percentage',2:ncol(df_tib))
+# df_tib <- arrange(df_tib, Donor.Id)
+# df_tib$Donor.Id <- as.numeric(as.character(df_tib$Donor.Id))
+# df_tib <- df_tib[order(df_tib$Donor.Id),]
+non_agg <- c('KJT','KSH','CSB','MYS')
+agg <- c('YJH','LHJ','KYE','CSK')
+patient_order <- c(agg,non_agg)
+
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro8.donor.by.celltype.png',width=1200,res=100)
+ggplot(df_tib, aes(x=Cell.Type,y=Percentage, fill=factor(Donor.Id, levels=patient_order))) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    coord_flip()
+dev.off()

@@ -1,0 +1,4 @@
+qiime feature-classifier fit-classifier-naive-bayes   
+--i-reference-reads ./silva-138-99-seqs.qza   
+--i-reference-taxonomy ./silva-138-99-tax.qza   
+--o-classifier silva-138-99-nb-classifier.qza
