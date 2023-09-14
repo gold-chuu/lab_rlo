@@ -1,0 +1,40 @@
+dt_o <- readRDS('/data/project/RCC_HWS/SS/sc/seurat/3/pro7.rds')
+
+dt[["percent.mt"]] <- PercentageFeatureSet(dt, pattern = "^MT-")
+dt <- PercentageFeatureSet(dt, "^RP[SL]", col.name = "percent.rb")
+dt <- PercentageFeatureSet(dt, "^HB[^(P)]", col.name = "percent.hb")
+dt <- PercentageFeatureSet(dt, "PECAM1|PF4", col.name = "percent.plat")
+
+dt <- subset(dt, subset = percent.mt < 15) # 20376 cells -> 19730
+dt_qc <- dt
+
+
+dt <- NormalizeData(dt, normalization.method = "LogNormalize", scale.factor = 10000)
+dt <- FindVariableFeatures(dt, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(dt), 10)
+plot1 <- VariableFeaturePlot(dt)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.mt15.variable_features.png',width=1000)
+plot1 + plot2
+dev.off()
+all.genes <- rownames(dt)
+dt <- ScaleData(dt, features = all.genes)
+dt <- RunPCA(dt, features = VariableFeatures(object = dt))
+dt <- RunUMAP(dt, dims = 1:50)
+dt <- FindNeighbors(dt, dims = 1:50)
+dt <- FindClusters(dt, resolution = 0.5)
+
+dt <- SetIdent(dt, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.mt15.umap.png')
+DimPlot(dt, reduction = "umap", label=TRUE)
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.mt15.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.mt15.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+
+saveRDS(dt, '/data/project/RCC_HWS/SS/sc/seurat/3/mt15.rds')
+
+dt_3 <- FindMarkers(dt, ident.1 = 3, min.pct = 0.25)

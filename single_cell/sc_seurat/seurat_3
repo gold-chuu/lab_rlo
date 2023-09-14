@@ -1,0 +1,625 @@
+#try with higher dims 230804-0807
+
+#load libraries---------------------------------------------------------------------------------------
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(ggplot2)
+library(data.table)
+library(tidyr)
+
+
+#re-processing-----------------------------------------------------------------------------------------
+dt <- readRDS('/data/project/RCC_HWS/SS/sc/seurat/3/pro7.rds')
+
+dt <- NormalizeData(dt, normalization.method = "LogNormalize", scale.factor = 10000)
+dt <- FindVariableFeatures(dt, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(dt), 10)
+plot1 <- VariableFeaturePlot(dt)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.2.variable_features.png',width=1000)
+plot1 + plot2
+dev.off()
+all.genes <- rownames(dt)
+dt <- ScaleData(dt, features = all.genes)
+dt <- RunPCA(dt, features = VariableFeatures(object = dt))
+dt <- RunUMAP(dt, dims = 1:50)
+dt <- FindNeighbors(dt, dims = 1:50)
+dt <- FindClusters(dt, resolution = 0.5)
+
+dt <- SetIdent(dt, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.2.umap.png')
+DimPlot(dt, reduction = "umap", label=TRUE)
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.2.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.2.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+
+backup6 <- dt
+saveRDS(backup6,'/data/project/RCC_HWS/SS/sc/seurat/pro6.2.rds')
+
+#celltyping---------------------------------------------------------------------------------------------------------------
+# 1. celltypist
+args = commandArgs(trailingOnly=TRUE)
+Seurat_dir <- args[1]
+outdir <- args[2]
+print(Seurat_dir)
+Seurat <- readRDS(file="/data/project/RCC_HWS/SS/sc/seurat/pro6.2.rds")
+rows <- nrow(Seurat)
+cols <- ncol(Seurat)
+cuts <- round(seq(1,rows, by = rows/7))
+
+setwd('/data/project/RCC_HWS/SS/sc/seurat')
+print('loading seurats')
+Seu1 <- Seurat[cuts[1]:(cuts[2]-1),]
+Seu2 <- Seurat[cuts[2]:(cuts[3]-1),]
+Seu3 <- Seurat[cuts[3]:(cuts[4]-1),]
+Seu4 <- Seurat[cuts[4]:(cuts[5]-1),]
+Seu5 <- Seurat[cuts[5]:(cuts[6]-1),]
+Seu6 <- Seurat[cuts[6]:(cuts[7]-1),]
+Seu7 <- Seurat[cuts[7]:rows,]
+
+#1
+print("Step 1/7")
+count_norm1 <- as.data.frame(Seu1[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu1[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv', row.names=TRUE, col.names=TRUE, quote=FALSE, nThread=10)
+#2
+print("Step 2/7")
+count_norm1 <- as.data.frame(Seu2[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu2[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#3
+print("Step 3/7")
+count_norm1 <- as.data.frame(Seu3[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu3[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#4
+print("Step 4/7")
+count_norm1 <- as.data.frame(Seu4[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu4[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#5
+print("Step 5/7")
+count_norm1 <- as.data.frame(Seu5[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu5[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#6
+print("Step 6/7")
+count_norm1 <- as.data.frame(Seu6[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu6[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+#7
+print("Step 7/7")
+count_norm1 <- as.data.frame(Seu7[["RNA"]]@counts[,1:round(cols/2)])
+count_norm2 <- as.data.frame(Seu7[["RNA"]]@counts[,(round(cols/2)+1):cols])
+tmp <- cbind(count_norm1,count_norm2)
+fwrite(tmp, file='seurat.csv',append=TRUE,row.names=TRUE, col.names=FALSE, quote=FALSE, nThread=10)
+
+# celltypist (command line)---------------------------------------------------------------
+# celltypist --update-models
+celltypist --indata /data/project/RCC_HWS/SS/sc/seurat/seurat.csv --model Immune_All_Low.pkl --outdir /data/project/RCC_HWS/SS/sc/celltypist/imm_low --transpose-input
+# celltypist --indata /data/project/RCC_HWS/SS/sc/seurat/seurat.csv --model Immune_All_High.pkl --outdir /data/project/RCC_HWS/SS/sc/celltypist/imm_high --transpose-input
+
+# add metadata--------------------------------------------------------------
+labels <- read.csv("/data/project/RCC_HWS/SS/sc/celltypist/imm_low/predicted_labels.csv")
+row.names(labels) <- labels$X #set rowname of new to cell barcode
+dt <- AddMetaData(dt, metadata = labels)
+dt$X <- NULL #remove extra barcode column
+backup8 <- dt
+saveRDS(dt, '/data/project/RCC_HWS/SS/sc/seurat/pro8.rds')
+
+png('/data/project/RCC_HWS/SS/sc/seurat/pro8.labels.png',width=2200,height=1700)
+DimPlot(dt, reduction = "umap", group.by='predicted_labels', label=TRUE)
+dev.off()
+
+count <- table(dt$seurat_clusters,dt$predicted_labels)
+write.csv(count,'/data/project/RCC_HWS/SS/sc/seurat/predicted_by_clusters.csv')
+clusters <- rownames(count)
+id <- c(colnames(count)[apply(count,1,which.max)])
+best_id <- data.frame(clusters, id)
+write.csv(best_id,'/data/project/RCC_HWS/SS/sc/seurat/best_id_by_cluster.csv')
+
+lbd <- dt
+names(id) <- levels(lbd)
+dt <- RenameIdents(lbd, id)
+
+png('/data/project/RCC_HWS/SS/sc/seurat/pro8.cluster.labeled.png',width=700,height=600)
+DimPlot(dt, reduction = "umap", group.by='ident', label=TRUE)
+dev.off()
+
+#--------------
+#return rownames with values greater than 10
+# type_count <- data.frame(unclass(table(dt$predicted_labels)))
+count <- table(dt$seurat_clusters,dt$predicted_labels)
+clusters <- rownames(count)
+df <- NULL
+df <- as.data.frame(clusters,)
+for(i in 1:ncol(count)){
+    x <- 0
+    for (j in 1:nrow(count)){
+        if (count[j,i] > 10){
+            x <- 1
+        }
+    }
+    if (x>0){
+        new <- as.data.frame(count[,i], drop=FALSE)
+        colnames(new) <- colnames(count)[i]
+        df <- cbind(df,new)
+    }
+}
+
+df_per <- df[2:ncol(df)]/rowSums(df[2:ncol(df)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Cluster")
+df_tib <- gather(df_tib,key='Cell.Type',value='Percentage',2:ncol(df_tib))
+df_tib <- arrange(df_tib, Cluster)
+df_tib$Cluster <- as.numeric(as.character(df_tib$Cluster))
+df_tib <- df_tib[order(df_tib$Cluster),]
+
+#plot--------------------------------------------
+# level_order <- c('0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18')
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro8.celltype.by.cluster.png',width=1200,res=100)
+ggplot(df_tib, aes(x=factor(Cluster),y=Percentage, fill=Cell.Type)) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    #xlab('Cluster') +
+    coord_flip()
+dev.off()
+
+#cell type by patient
+count <- table(dt$donor_id,dt$predicted_labels)
+id <- rownames(count)
+df <- NULL
+df <- as.data.frame(id,)
+for(i in 1:ncol(count)){
+    x <- 0
+    for (j in 1:nrow(count)){
+        if (count[j,i] > 10){
+            x <- 1
+        }
+    }
+    if (x>0){
+        new <- as.data.frame(count[,i], drop=FALSE)
+        colnames(new) <- colnames(count)[i]
+        df <- cbind(df,new)
+    }
+}
+df_save <- df
+df_per <- df[2:ncol(df)]/rowSums(df[2:ncol(df)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Donor.Id")
+df_tib <- gather(df_tib,key='Cell.Type',value='Percentage',2:ncol(df_tib))
+df_tib <- arrange(df_tib, Donor.Id)
+# df_tib$Donor.Id <- as.numeric(as.character(df_tib$Donor.Id))
+# df_tib <- df_tib[order(df_tib$Donor.Id),]
+non_agg <- c('KJT','KSH','CSB','MYS')
+agg <- c('YJH','LHJ','KYE','CSK')
+patient_order <- c(agg,non_agg)
+
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro8.celltype.by.donor.png',width=1200,res=100)
+ggplot(df_tib, aes(x=factor(Donor.Id, levels=patient_order),y=Percentage, fill=Cell.Type)) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    coord_flip()
+dev.off()
+
+#donor by cell type -- cell type w/ count < 20 for YJH removed
+count <- as.data.frame.matrix(table(dt$predicted_labels, dt$donor_id))
+count <- t(count) #transpose
+id <- rownames(count)
+df <- NULL
+df <- as.data.frame(id,)
+
+for(i in nrow(count):nrow(count)){
+    for (j in 1:ncol(count)){
+        if (count[8,j] > 20){
+            new <- as.data.frame(count[,j], drop=FALSE)
+            colnames(new) <- colnames(count)[j]
+            df <- cbind(df,new)
+        }
+    }
+}
+df_save <- df
+df$id <- NULL
+df_t <- as.data.frame.matrix(t(df))   
+df_per <- df_t[1:ncol(df_t)]/rowSums(df_t[1:ncol(df_t)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Cell.Type")
+df_tib <- gather(df_tib,key='Donor.Id',value='Percentage',2:ncol(df_tib))
+# df_tib <- arrange(df_tib, Donor.Id)
+# df_tib$Donor.Id <- as.numeric(as.character(df_tib$Donor.Id))
+# df_tib <- df_tib[order(df_tib$Donor.Id),]
+non_agg <- c('KJT','KSH','CSB','MYS')
+agg <- c('YJH','LHJ','KYE','CSK')
+patient_order <- c(agg,non_agg)
+
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro8.donor.by.celltype.png',width=1200,res=100)
+ggplot(df_tib, aes(x=Cell.Type,y=Percentage, fill=factor(Donor.Id, levels=patient_order))) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    coord_flip()
+dev.off()
+
+
+#findallmarkers
+dt <- SetIdent(dt, value = dt$seurat_clusters)
+dt.markers <- FindAllMarkers(dt, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+# saveRDS(dt.markers,'/data/project/RCC_HWS/SS/sc/seurat/all_markers.rds')
+tbl <- dt.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC)
+write.csv(tbl,'/data/project/RCC_HWS/SS/sc/seurat/top20_markers.csv')
+
+
+#plots------------------------------------------------------------------------------------------------------------
+#patient by cluster
+df <- as.data.frame.matrix(table(dt$seurat_clusters,dt$donor_id))
+df_per <- df[1:ncol(df)]/rowSums(df[1:ncol(df)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Cluster")
+df_tib <- gather(df_tib,key='Donor.Id',value='Percentage',2:ncol(df_tib))
+df_tib <- arrange(df_tib, Cluster)
+df_tib$Cluster <- as.numeric(as.character(df_tib$Cluster))
+df_tib <- df_tib[order(df_tib$Cluster),]
+
+non_agg <- c('KJT','KSH','CSB','MYS')
+agg <- c('YJH','LHJ','KYE','CSK')
+patient_order <- c(agg,non_agg)
+
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro7.donor_id.by.cluster.png',width=1200,res=100)
+ggplot(df_tib, aes(x=factor(Cluster),y=Percentage, fill=factor(Donor.Id, levels=patient_order))) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    coord_flip()
+dev.off()
+
+#status by cluster
+df <- as.data.frame.matrix(table(dt$seurat_clusters,dt$Status))
+df_per <- df[1:ncol(df)]/rowSums(df[1:ncol(df)])
+df_tib <- dplyr::as_tibble(df_per, rownames = "Cluster")
+df_tib <- gather(df_tib,key='Status',value='Percentage',2:ncol(df_tib))
+df_tib <- arrange(df_tib, Cluster)
+df_tib$Cluster <- as.numeric(as.character(df_tib$Cluster))
+df_tib <- df_tib[order(df_tib$Cluster),]
+
+png(file='/data/project/RCC_HWS/SS/sc/seurat/pro7.status.by.cluster.png',width=1200,res=100)
+ggplot(df_tib, aes(x=factor(Cluster),y=Percentage, fill=factor(Status, levels=c('AG','NAG')))) +
+    geom_bar(position='fill',stat='identity') +
+    theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+    coord_flip()
+dev.off()
+
+
+#marker plots----------------------------------------------------------
+dt <- readRDS('/data/project/RCC_HWS/SS/sc/seurat/pro8.rds')
+
+mks <- c('CD4','CD8A','CD8B','CCR7','GZMA','FOXP3','LAG3','SLC4A10',) #T
+png('/data/project/RCC_HWS/SS/sc/seurat/FeaturePlot.T.png', width=1500,height=1000)
+FeaturePlot(dt, features = mks, ncol=4)
+dev.off()
+
+png('/data/project/RCC_HWS/SS/sc/seurat/FeaturePlot.mks.png', width=1500,height=1000)
+FeaturePlot(dt, features = c("CROCC",'SLC38A2','PLCG2','TEX14'),ncol=4)
+dev.off()
+
+backup <- dt
+
+dt_4 <- FindMarkers(dt, ident.1 = 4, min.pct = 0.25)
+dt.4 <- slice_max(dt_4, n = 40, order_by = avg_log2FC)
+dt_5 <- FindMarkers(dt, ident.1 = 5, min.pct = 0.25)
+dt.5 <- slice_max(dt_5, n = 20, order_by = avg_log2FC)
+dt_10 <- FindMarkers(dt, ident.1 = 10, min.pct = 0.25)
+dt_7 <- FindMarkers(dt, ident.1 = 7, min.pct = 0.25)
+dt_17 <- FindMarkers(dt, ident.1 = 17, min.pct = 0.25)
+
+    slice_max(n = 20, order_by = avg_log2FC)
+
+
+
+#ASSIGN CELLS!!!!!!!!
+id <- c('CD4+ Tcm',
+    'CD8+ Teff','CD4+ Tn','classical monocytes','CD8+ Tem','NK','naive B','NK','classical monocytes','memory B','NK',
+    'MAIT','Treg','CD8+ Teff','nonclassical monocytes','CD8+ Tn','cDC2','platelet','plasma','pDC')
+
+lbd <- dt
+names(id) <- levels(lbd)
+dt_new <- RenameIdents(lbd, id)
+dt_new$cell_type <- dt_new@active.ident
+
+saveRDS(dt_new, '/data/project/RCC_HWS/SS/sc/seurat/pro9.rds')
+saveRDS(dt, '/data/project/RCC_HWS/SS/sc/seurat/pro9.rds')
+
+
+saveRDS(df, '/data/project/RCC_HWS/SS/sc/seurat/metadata.rds')
+
+dt1 <- dt
+dt <- subset(dt, idents = c('YJH'), invert=TRUE) 
+saveRDS(dt, '/data/project/RCC_HWS/SS/sc/seurat/pro9.wo.YJH.rds')
+
+
+# remove YJH from dataset & reprocess (use SCTransform)-------------------------------------------------------
+dt2 <- dt
+dt <- dt2
+
+#Note that this single command (SCTransform) replaces NormalizeData(), ScaleData(), and FindVariableFeatures().
+#install sctransform-------------------------------------------------------------------------------
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+BiocManager::install("glmGamPoi")
+#--------------------------------------------------------------------------------------------------
+dt <- PercentageFeatureSet(dt, pattern = "^MT-", col.name = "percent.mt")
+dt <- SCTransform(dt, method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = FALSE)
+
+dt_test <- JackStraw(dt, num.replicate = 100)
+dt_test <- ScoreJackStraw(dt_test, dims = 1:50)
+# png('/data/project/RCC_HWS/SS/sc/seurat/pro10.JackStrawPlot.png')
+# JackStrawPlot(dt_test, dims = 1:50) #Jackstrawplot is not for SCTransform-normalized data
+# dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.ElbowPlot.png')
+ElbowPlot(dt, dims=1:30)
+dev.off()
+
+dt <- RunPCA(dt, verbose=FALSE)
+dt <- RunUMAP(dt, dims = 1:50, verbose=FALSE)
+dt <- FindNeighbors(dt, dims = 1:50, verbose=FALSE)
+dt <- FindClusters(dt, resolution = 1.1, verbose=FALSE)
+
+dt <- SetIdent(dt, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.umap.png')
+DimPlot(dt, reduction = "umap", label=TRUE)
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.umap.subtype.png')
+DimPlot(dt, reduction = "umap", group.by='subtype_2')
+dev.off()
+
+
+mks <- c('MS4A1','CD38','CD27','JCHAIN','CD14','FCGR3A','SELL','CX3CR1','HLA-DR','ITGB2','ITGAM','NRP1','CD1C','PPBP','CD3E','SLC4A10','FOXP3','CD4','CD8B','LEF1','IL7R','CD44','PRF1','NCAM1') 
+png('/data/project/RCC_HWS/SS/sc/seurat/FeaturePlot.All2.png', width=1500,height=2300)
+FeaturePlot(dt, features = mks, ncol=4)
+dev.off()
+
+saveRDS(dt,'/data/project/RCC_HWS/SS/sc/seurat/pro10.rds')
+
+install.packages('BiocManager')
+BiocManager::install('limma')
+
+dt <- SetIdent(dt, value = dt$seurat_clusters)
+dt.markers <- FindAllMarkers(dt, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+# saveRDS(dt.markers,'/data/project/RCC_HWS/SS/sc/seurat/all_markers.rds')
+tbl <- dt.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 50, order_by = avg_log2FC)
+write.csv(tbl,'/data/project/RCC_HWS/SS/sc/seurat/pro10.top20_markers.csv')
+
+mks <- c('CD14','SELL','FCGR3A','CX3CR1','FCGR3B','ITGB2','ITGAM','ITGAX','CD1C','PECAM1','CCR2','FCGR1A','CD68') #MCs
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.VlnPlot.MCs.png', width=1500,height=1000)
+VlnPlot(object = dt, features = mks, idents=c(7,11,14,18),ncol=4)
+dev.off()
+
+mks <- c('CCR7','SELL','PRF1','IL7R','CD44','CD69','FCGR3A','TRDC','TRGC1','TRGC2','BTN3A1','CD27','CD28','CCR6','TCF7','IFNG','CD3E','NCAM1','TNFRSF7') #Ts
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.VlnPlot.Ts.png', width=1500,height=1000)
+VlnPlot(object = dt, features = mks, idents=c(0,1,10,8,3,12,16,13,17,6,2,9),ncol=4)
+dev.off()
+
+clusters <- c(0,1,10,8,3,12,16,13,17,6,2,9)
+mks <- sort(c('CCR7','SELL','PRF1','IL7R','CD44','CD69','FCGR3A','NCAM1','IFNG','TRDC','TRGC1','TRGC2','BTN3A1','CD27','CD28','CCR5','TCF7','CD3E','KLRG1','CD8A','CD8B','CD4','TBX21','CXCR3','GATA3','CCR4','IL4R','RORC','RORA','CCR6','FOXP3','CTLA4','IRF4','IL9R','PDCD1','LAG3','IL10','SLC4A10')) #Ts
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.DotPlot.Ts.png', width=1000,height=400)
+DotPlot(object = dt, features = mks, idents=c(0,1,10,8,3,12,16,13,17,6,2,9),cluster.idents=TRUE, col.min=0,dot.min=0.2) + theme(axis.text.x=element_text(angle=90))
+dev.off()
+
+
+mks <- sort(c('CCR7','SELL','IL7R','CD44','CD69','BTN3A1','CD27','CD28','TCF7','CD3E','KLRG1','CD4','GATA3','IL4R','RORA','BCL2','BTLA','CXCR4','STAT4','STAT1','STAT6','STAT3','AHR','BCL6','CD11B')) #Th
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.DotPlot.Th.png', width=1000,height=200)
+DotPlot(object = dt, features = mks, idents=c(0,1,8,10),dot.min=0.1) + theme(axis.text.x=element_text(angle=90))
+dev.off()
+
+
+mks <- c('CCR7','SELL',) #T
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.VlnPlot.T.png', width=1500,height=1000)
+VlnPlot(object = dt, features = mks, idents=c(0,1,10,8,3,12,16,13,17,6,2,9),ncol=4)
+dev.off()
+
+#ASSIGN CELLS!!!!!!!!
+id <- c('CD4+ Tn',
+    'CD4+ Tcm','CD8+ Teff','CD4+ Tem','naive B','memory B','CD56dim NK','classical MC','CD4+ Tcm','CD56bright NK','CD4+ Tscm',
+    'intermediate MC','CD8+ Tn','MAIT','nonclassical MC','platelet','Treg','gdTeff','MoDC','plasma','pDC')
+
+lbd <- dt
+names(id) <- levels(lbd)
+dt_new <- RenameIdents(lbd, id)
+dt_new$cell_type2 <- dt_new@active.ident
+
+saveRDS(dt_new, '/data/project/RCC_HWS/SS/sc/seurat/pro10.rds')
+
+
+
+
+#ALL w/ SCTransform-----------------------------------------------------------------------------------------------
+dt <- readRDS('/data/project/RCC_HWS/SS/sc/seurat/pro9.2.rds')
+
+dt <- PercentageFeatureSet(dt, pattern = "^MT-", col.name = "percent.mt")
+dt <- SCTransform(dt, method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = FALSE)
+dt <- RunPCA(dt, verbose=FALSE)
+dt <- RunUMAP(dt, dims = 1:50, verbose=FALSE)
+dt <- FindNeighbors(dt, dims = 1:50, verbose=FALSE)
+dt <- FindClusters(dt, resolution = 1, verbose=FALSE)
+
+dt <- SetIdent(dt, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro9.2.umap.png')
+DimPlot(dt, reduction = "umap", label=TRUE)
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro9.2.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro9.2.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro9.2.umap.subtype.png')
+DimPlot(dt, reduction = "umap", group.by='subtype_2')
+dev.off()
+
+
+mks <- c('MS4A1','CD38','CD27','JCHAIN','ITGAM','CD14','FCGR3A','NRP1','CD1C','PPBP','CD3E','SLC4A10','FOXP3','CD4','CD8B','LEF1','IL7R','CD44','PRF1','NCAM1') 
+png('/data/project/RCC_HWS/SS/sc/seurat/FeaturePlot.All.pro9.2.png', width=1500,height=2000)
+FeaturePlot(dt, features = mks, ncol=4)
+dev.off()
+
+saveRDS(dt,'/data/project/RCC_HWS/SS/sc/seurat/pro9.2.rds')
+
+dt <- SetIdent(dt, value = dt$seurat_clusters)
+dt.markers <- FindAllMarkers(dt, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+# saveRDS(dt.markers,'/data/project/RCC_HWS/SS/sc/seurat/all_markers.rds')
+tbl <- dt.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC)
+write.csv(tbl,'/data/project/RCC_HWS/SS/sc/seurat/pro9.2.top20_markers.csv')
+
+
+
+#230814 (final plotting)--------------------------------------------------------------------------------------------
+
+#for w/o YJH
+#DotPlot for big groups
+clsts <- c('0','1','3','8','10','13','16','17','2','12','7','11','14','6','9','18','20','4','5','19','15')
+Idents(dt) <- factor(Idents(dt), levels= clsts)
+mks <- c('CD3E','CD4','CD8A','CD8B','CD14','FCGR3A','NCAM1','CD1C','NRP1','MS4A1','JCHAIN','PPBP')
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.DotPlot.All.png', width=600,height=300)
+DotPlot(object = dt, features = mks) + theme(axis.text.x=element_text(angle=90)) + coord_flip()
+dev.off()
+
+mks <- c('CD4','CD1C')
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.VlnPlot.MoDC.png', width=1500,height=500)
+VlnPlot(object = dt, features = mks, idents=c(18), ncol=4, group.by='id')
+dev.off()
+
+#DotPlot for T cell states
+# Ts <- subset(dt,idents=c(0,1,3,8,10,13,16,17,2,12))
+clsts <- c('1','8','12','0','10','3','2','17','13','16')
+Idents(Ts) <- factor(Idents(Ts), levels= clsts)
+mks <- c('PECAM1','CCR7','CD27','BCL2','LEF1','CD44','CD28','IL7R','GZMB','IL2RB','SPN','KLRG1','PRF1','SLC4A10','FOXP3')
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.DotPlot.T.states.png', width=600,height=400)
+DotPlot(object = Ts, features = mks,col.min=0) + coord_flip()
+dev.off()
+
+#ASSIGN CELLS!!!!!!!!
+dt <- readRDS('/data/project/RCC_HWS/SS/sc/seurat/pro10.rds')
+
+id <- c('CD4+ Tcm',
+    'CD4+ Tn','CD8+ Teff','CD4+ Tem','naive B','memory B','CD56dim NK','classical MC','CD4+ Tn','CD56bright NK','CD4+ Tscm',
+    'intermediate MC','CD8+ Tn','MAIT','nonclassical MC','platelet','Treg','gdT','MoDC','plasma','pDC')
+
+
+lbd <- dt
+names(id) <- levels(lbd)
+dt_new <- RenameIdents(lbd, id)
+dt_new$cell_type2 <- dt_new@active.ident
+
+saveRDS(dt_new, '/data/project/RCC_HWS/SS/sc/seurat/pro10.rds')
+
+#boxplots
+# mks <- c('CD3E','CD4','CD8A','CD8B','CD14','FCGR3A','NCAM1','CD1C','NRP1','MS4A1','JCHAIN','PPBP')
+# png('/data/project/RCC_HWS/SS/sc/seurat/pro10.VlnBoxPlot.all.png',width=1000,height=1200)
+# VlnPlot(dt, features='CD3E', group.by='subtype_2',pt.size=0) + geom_boxplot(width=0.1,fill='white',outlier.size=0)
+# dev.off()
+#By default VlnPlot pulls the expression values from the data slot. So in your example above you are plotting the log1p-transformed corrected (discrete) counts. To plot the Pearson residuals set slot = "scale.data" in VlnPlot
+
+mks <- c('CD3E','CD4','CD8A','CD8B','CD14','FCGR3A','NCAM1','CD1C','NRP1','MS4A1','JCHAIN','PPBP')
+nk <- c('FCGR3A','NCAM1','IFNG')
+png('/data/project/RCC_HWS/SS/sc/seurat/pro10.VlnBoxPlot.all.png',width=600,height=800)
+VlnPlot(dt, features=nk, idents=c(6,9),split.by='subtype_2',assay='SCT',ncol=2)
+dev.off()
+
+df <- as.data.frame(as.matrix(GetAssayData(dt,assay='SCT',slot='data')))
+df2 <- as.data.frame(as.matrix(GetAssayData(dt,assay='SCT',slot='counts')))
+df %>%
+    filter(gene == 'NCAM1') %>%
+    ggplot(.,aes(x=,y=)) +
+    geom_boxplot()
+
+
+
+
+
+#////////////////////////
+
+
+require(reshape2)
+require(ggplot2)
+
+ex <- melt(df, id.vars=c("gene"))
+colnames(ex) <- c("gene","group","exprs")
+
+ggplot(data=ex, aes(x=group, y=exprs)) +
+
+    geom_boxplot(position=position_dodge(width=0.5), outlier.shape=17, outlier.colour="red", outlier.size=0.1, aes(fill=group)) +
+
+    #Choose which colours to use; otherwise, ggplot2 choose automatically
+    #scale_color_manual(values=c("red3", "white", "blue")) + #for scatter plot dots
+    scale_fill_manual(values=c("red", "royalblue")) + #for boxplot
+
+    #Add the scatter points (treats outliers same as 'inliers')
+    geom_jitter(position=position_jitter(width=0.3), size=3.0, colour="black") +
+
+    #Set the size of the plotting window
+    theme_bw(base_size=24) +
+
+    #Modify various aspects of the plot text and legend
+    theme(
+        legend.position="none",
+        legend.background=element_rect(),
+        plot.title=element_text(angle=0, size=14, face="bold", vjust=1),
+
+        axis.text.x=element_text(angle=45, size=14, face="bold", hjust=1.10),
+        axis.text.y=element_text(angle=0, size=14, face="bold", vjust=0.5),
+        axis.title=element_text(size=14, face="bold"),
+
+        #Legend
+        legend.key=element_blank(),     #removes the border
+        legend.key.size=unit(1, "cm"),      #Sets overall area/size of the legend
+        legend.text=element_text(size=12),  #Text size
+        title=element_text(size=12)) +      #Title text size
+
+    #Change the size of the icons/symbols in the legend
+    guides(colour=guide_legend(override.aes=list(size=2.5))) +
+
+    #Set x- and y-axes labels
+    xlab("Stem cell class") +
+    ylab("Expression") +
+
+    #ylim(0, 0) +
+
+    ggtitle("My plot")
+
+
+
+
+#////////////////////////
+
+
+
+
+
+
+
+
+
+
+mks <- c('CD3E','CD4','CD8A','CD8B','CD14','FCGR3A','NCAM1','CD1C','NRP1','MS4A1','JCHAIN','PPBP')
+png('/data/project/RCC_HWS/SS/sc/seurat/pro9.2.DotPlot.All.png', width=600,height=300)
+DotPlot(object = dt, features = mks,cluster.idents=TRUE) + theme(axis.text.x=element_text(angle=90)) + coord_flip()
+dev.off()
+
+
+
+#DotPlot/VlnPlot for small groups

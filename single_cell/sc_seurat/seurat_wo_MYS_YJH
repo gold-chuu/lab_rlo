@@ -1,0 +1,53 @@
+dt_o <- readRDS('/data/project/RCC_HWS/SS/sc/seurat/3/pro7.rds')
+dt <- dt_o
+dt <- SetIdent(dt, value = dt@meta.data$donor_id)
+dt <- subset(dt, idents = c('YJH','MYS'), invert=TRUE) #37529 cells -> 24551 cells
+
+dt[["percent.mt"]] <- PercentageFeatureSet(dt, pattern = "^MT-")
+dt <- PercentageFeatureSet(dt, "^RP[SL]", col.name = "percent.rb")
+dt <- PercentageFeatureSet(dt, "^HB[^(P)]", col.name = "percent.hb")
+dt <- PercentageFeatureSet(dt, "PECAM1|PF4", col.name = "percent.plat")
+
+png('/data/project/RCC_HWS/SS/sc/seurat/qc.wo.png',width=500,height=800)
+feats <- c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rb", "percent.hb", "percent.plat")
+VlnPlot(dt, group.by = "orig.ident", features = feats, pt.size = 0.1, ncol = 3) +
+    NoLegend()
+dev.off()
+
+png('/data/project/RCC_HWS/SS/sc/seurat/qc2.wo.png',width=1000)
+FeatureScatter(dt, "nCount_RNA", "nFeature_RNA", group.by = "ident", pt.size = 0.5)
+dev.off()
+
+dt <- subset(dt, subset = percent.mt < 10) # 7640 cells -> 6530
+dt_qc <- dt
+
+dt <- NormalizeData(dt, normalization.method = "LogNormalize", scale.factor = 10000)
+dt <- FindVariableFeatures(dt, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(dt), 10)
+plot1 <- VariableFeaturePlot(dt)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.wo.variable_features.png',width=1000)
+plot1 + plot2
+dev.off()
+all.genes <- rownames(dt)
+dt <- ScaleData(dt, features = all.genes)
+dt <- RunPCA(dt, features = VariableFeatures(object = dt))
+dt <- RunUMAP(dt, dims = 1:50)
+dt <- FindNeighbors(dt, dims = 1:50)
+dt <- FindClusters(dt, resolution = 0.5)
+
+dt <- SetIdent(dt, value = dt@meta.data$seurat_clusters)
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.wo.umap.png')
+DimPlot(dt, reduction = "umap", label=TRUE)
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.wo.umap.id.png')
+DimPlot(dt, reduction = "umap", group.by='donor_id')
+dev.off()
+png('/data/project/RCC_HWS/SS/sc/seurat/pro6.wo.umap.stat.png')
+DimPlot(dt, reduction = "umap", group.by='Status')
+dev.off()
+
+saveRDS(dt, '/data/project/RCC_HWS/SS/sc/seurat/3/wo.rds')
+
+
+dt_2 <- FindMarkers(dt, ident.1 = 2, min.pct = 0.25)
